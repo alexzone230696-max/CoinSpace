@@ -60,4 +60,4 @@ jobs:
           tag: v${{ github.run_number }}
           name: Android APK
           files: phonegap/platforms/android/app/build/outputs/apk/release/app-release.apk
-          draft: false
+          draft: true
