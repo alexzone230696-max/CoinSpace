@@ -1,4 +1,4 @@
-name: CoinSpace CI
+name: CoinSpace CI2
 
 on:
   workflow_dispatch:
