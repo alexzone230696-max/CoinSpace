@@ -1,118 +1,83 @@
-workflows:
-  coinspace-ci:
-    name: CoinSpace CI2
-    max_build_duration: 180
+name: coinspace-ci
+max_build_duration: 180
+environment:
+  vars:
+    NODE_VERSION: 20
+triggers:
+  - manual
+  - push:
+      branch:
+        - '**'
+
+scripts:
+  - name: Set app version
+    script: |
+      VERSION=$(node -p "require('./web/package.json').version")
+      echo "export VERSION=$VERSION" >> $CM_ENV
+
+jobs:
+  - name: Lint
+    scripts:
+      - name: Install dependencies
+        script: |
+          npm --prefix web ci
+          npm --prefix server ci
+          npm --prefix electron ci
+          npm --prefix phonegap ci
+      - name: Run linters
+        script: |
+          npm run --prefix web lint
+          npm run --prefix web lint:style
+          npm run --prefix server lint
+          npm run --prefix server lint:api
+          npm run --prefix electron lint
+          npm run --prefix phonegap lint
+
+  - name: Build
+    depends_on: Lint
     environment:
       vars:
-        NODE_VERSION: 20
-    triggers:
-      - manual
-      - push:
-          branch:
-            - '**'
+        NODE_OPTIONS: --max-old-space-size=3575
+    matrix:
+      os:
+        - macos-14
+        - macos-15
+        - ubuntu-22.04
+        - windows-2022
+      build_type:
+        - electron
+        - phonegap
+      distribution:
+        - mac
+        - mas
+        - mas-dev
+        - snap
+        - flatpak
+        - appx
+        - appx-dev
+        - ios
+        - android-play
+        - android-galaxy
+        - android-huawei
+        - android-uptodown
+        - android-apk
     scripts:
-      - name: Set app version
+      - name: Install Node.js dependencies
         script: |
-          VERSION=$(node -p "require('./web/package.json').version")
-          echo "export VERSION=$VERSION" >> $CM_ENV
+          npm --prefix web ci
+          npm --prefix $build_type ci
+      - name: Build app
+        script: |
+          npm --prefix web run i18n:ci
+          npm --prefix web run build
+          npm --prefix $build_type run build
 
-    jobs:
-      - name: Lint
-        scripts:
-          - name: Install dependencies
-            script: |
-              npm --prefix web ci
-              npm --prefix server ci
-              npm --prefix electron ci
-              npm --prefix phonegap ci
-          - name: Run linters
-            script: |
-              npm run --prefix web lint
-              npm run --prefix web lint:style
-              npm run --prefix server lint
-              npm run --prefix server lint:api
-              npm run --prefix electron lint
-              npm run --prefix phonegap lint
-
-      - name: Build
-        depends_on: Lint
-        environment:
-          vars:
-            NODE_OPTIONS: --max-old-space-size=3575
-        matrix:
-          os:
-            - macos-14
-            - macos-15
-            - ubuntu-22.04
-            - windows-2022
-          build_type:
-            - electron
-            - phonegap
-          distribution:
-            - mac
-            - mas
-            - mas-dev
-            - snap
-            - flatpak
-            - appx
-            - appx-dev
-            - ios
-            - android-play
-            - android-galaxy
-            - android-huawei
-            - android-uptodown
-            - android-apk
-        scripts:
-          - name: Install platform tools
-            script: |
-              if [ "$build_type" = "electron" ] && [ "$distribution" = "snap" ]; then
-                sudo snap install snapcraft --classic
-              fi
-              if [ "$build_type" = "electron" ] && [ "$distribution" = "flatpak" ]; then
-                sudo apt update
-                sudo apt install -y elfutils flatpak flatpak-builder
-                flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-                flatpak update
-                git config --global protocol.file.allow always
-              fi
-              if [ "$build_type" = "phonegap" ] && [[ "$distribution" == android* ]]; then
-                case "$distribution" in
-                  android-play)
-                    echo $ANDROID_PLAY_RELEASE_KEYSTORE | base64 --decode > phonegap/release.play.keystore
-                    ;;
-                  android-galaxy)
-                    echo $ANDROID_GALAXY_RELEASE_KEYSTORE | base64 --decode > phonegap/release.galaxy.keystore
-                    ;;
-                  android-huawei)
-                    echo $ANDROID_HUAWEI_RELEASE_KEYSTORE | base64 --decode > phonegap/release.huawei.keystore
-                    ;;
-                  android-uptodown)
-                    echo $ANDROID_UPTODOWN_RELEASE_KEYSTORE | base64 --decode > phonegap/release.uptodown.keystore
-                    ;;
-                  android-apk)
-                    echo $ANDROID_APK_RELEASE_KEYSTORE | base64 --decode > phonegap/release.apk.keystore
-                    ;;
-                esac
-              fi
-          - name: Install Node.js dependencies
-            script: |
-              npm --prefix web ci
-              npm --prefix $build_type ci
-          - name: Build app
-            script: |
-              npm --prefix web run i18n:ci
-              npm --prefix web run build
-              npm --prefix $build_type run build
-
-      - name: Release
-        depends_on: Build
-        scripts:
-          - name: Create GitHub release
-            script: |
-              gh release create v$VERSION \
-                --title "v$VERSION" \
-                --draft \
-                --notes "🌐 Web: [Web Wallet](https://coin.space/wallet/) \
-📱 Mobile: [Coin.Wallet.apk](https://github.com/CoinSpace/CoinSpace/releases/download/v$VERSION/Coin.Wallet.apk) (Android) \
-🖥️ Desktop: [Coin.Wallet.dmg](https://github.com/CoinSpace/CoinSpace/releases/download/v$VERSION/Coin.Wallet.dmg) (macOS), [Flatpak](https://github.com/CoinSpace/CoinSpace/releases/download/v$VERSION/Coin.Wallet.flatpak) (Linux) \
-🕵️ Tor: [Tor Wallet (.onion)](https://coinspacezp5mmyuicbz2hoafbnduj4vzkttq3grn5mnwdue5t343zid.onion/wallet/)"
+  - name: Release
+    depends_on: Build
+    scripts:
+      - name: Create GitHub release
+        script: |
+          gh release create v$VERSION \
+            --title "v$VERSION" \
+            --draft \
+            --notes "Web: [Web Wallet](https://coin.space/wallet/), Mobile: [Coin.Wallet.apk](https://github.com/CoinSpace/CoinSpace/releases/download/v$VERSION/Coin.Wallet.apk) (Android), Desktop: [Coin.Wallet.dmg](https://github.com/CoinSpace/CoinSpace/releases/download/v$VERSION/Coin.Wallet.dmg) (macOS), [Flatpak](https://github.com/CoinSpace/CoinSpace/releases/download/v$VERSION/Coin.Wallet.flatpak) (Linux), Tor: [Tor Wallet (.onion)](https://coinspacezp5mmyuicbz2hoafbnduj4vzkttq3grn5mnwdue5t343zid.onion/wallet/)"
