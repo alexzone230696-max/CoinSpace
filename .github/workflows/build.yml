@@ -1,76 +1,38 @@
-name: CoinSpace Android CI
+name: Build APK
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - '**'
-    tags-ignore:
-      - '**'
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
 
 jobs:
-  build-android:
-    runs-on: ubuntu-22.04
-    if: github.ref == 'refs/heads/master'
-    env:
-      NODE_ENV: production
-      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-      PATH: /usr/local/lib/android/sdk/platform-tools:/usr/local/lib/android/sdk/build-tools/33.0.2:$PATH
-      VITE_BUILD_TYPE: phonegap
-      VITE_PLATFORM: android
-      VITE_DISTRIBUTION: android-apk
-      NODE_OPTIONS: --max-old-space-size=3575
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      ANDROID_KEYSTORE: phonegap/release.apk.keystore
-      ANDROID_KEYSTORE_PASS: ${{ secrets.ANDROID_APK_KEYSTORE_PASSWORD }}
-      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_APK_KEY_ALIAS }}
-      ANDROID_KEY_PASS: ${{ secrets.ANDROID_APK_KEY_PASSWORD }}
+  build:
+    runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Клонируем репозиторий
-      - uses: actions/checkout@v4
+      # 1. Получаем репозиторий
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      # 2️⃣ Устанавливаем Node.js
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      # 2. Устанавливаем JDK
+      - name: Set up JDK
+        uses: actions/setup-java@v4
         with:
-          node-version: 20
+          distribution: "temurin"
+          java-version: "17"
 
-      # 3️⃣ Устанавливаем зависимости web и phonegap проектов
-      - name: Install dependencies
-        run: |
-          npm ci --prefix web
-          npm ci --prefix phonegap
+      # 3. Даем права gradlew
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
 
-      # 4️⃣ Устанавливаем Cordova глобально
-      - name: Install Cordova
-        run: npm install -g cordova
+      # 4. Сборка APK
+      - name: Build APK
+        run: ./gradlew assembleDebug
 
-      # 5️⃣ Запускаем lint, ошибки не ломают сборку
-      - name: Lint phonegap
-        run: |
-          npm --prefix phonegap run lint || true
-
-      # 6️⃣ Декодируем keystore для подписи APK
-      - name: Decode Keystore
-        run: echo $ANDROID_APK_RELEASE_KEYSTORE | base64 --decode > phonegap/release.apk.keystore
-
-      # 7️⃣ Сборка release APK через Cordova
-      - name: Build Android APK
-        run: |
-          cd phonegap
-          cordova platform add android || true
-          cordova build android --release \
-            -- --keystore=$ANDROID_KEYSTORE \
-            --storePassword=$ANDROID_KEYSTORE_PASS \
-            --alias=$ANDROID_KEY_ALIAS \
-            --password=$ANDROID_KEY_PASS
-
-      # 8️⃣ Загружаем собранный APK на GitHub Release
-      - name: Upload APK to GitHub Releases
-        uses: ncipollo/release-action@v1
+      # 5. Сохранение артефакта (.apk)
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
         with:
-          tag: v${{ github.run_number }}
-          name: Android APK
-          files: phonegap/platforms/android/app/build/outputs/apk/release/app-release.apk
-          draft: false
+          name: app-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
